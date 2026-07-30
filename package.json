@@ -1,0 +1,9 @@
+{
+  "name": "stock-briefing",
+  "private": true,
+  "version": "1.0.0",
+  "description": "실시간 지수 조회 + 무료 AI(Gemini) 뉴스 분석 기반 주식 브리핑 앱 (Netlify 무료 호스팅)",
+  "engines": {
+    "node": ">=18"
+  }
+}

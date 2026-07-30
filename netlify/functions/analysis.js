@@ -6,7 +6,7 @@
 // 3) 결과를 JSON으로 반환한다. 비용은 발생하지 않지만, Gemini 무료 티어는
 //    분당 호출 횟수 제한이 있으므로 너무 자주 호출하지 않도록 프론트엔드에서 조절한다.
 
-const GEMINI_MODEL = 'gemini-2.0-flash';
+const GEMINI_MODEL = 'gemini-3.5-flash';
 
 async function fetchRSS(url, limit) {
   const res = await fetch(url, {

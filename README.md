@@ -1,5 +1,35 @@
 # 오늘의 주식 브리핑 — 실시간판
 
+## ⚠ 2026.07.30 업데이트: 배포 후 확인된 버그 수정
+
+`https://hajoni72.netlify.app/` 배포본을 점검한 결과, **AI 뉴스 분석이 실패하고 있었을 가능성이 매우 높습니다.**
+
+- 원인: `netlify/functions/analysis.js`에 지정했던 Gemini 모델명이 `gemini-2.0-flash`였는데, 이 모델은 **2026년 3월 3일에 Google이 공식 종료(shutdown)** 했습니다. 이후로는 이 함수가 호출될 때마다 Gemini API가 오류를 반환했을 것이고, 화면에는 "⚠ 실시간 AI 분석 실패" 문구와 함께 예시 데이터가 계속 표시되고 있었을 것입니다.
+- 조치: 모델을 현재 안정 버전인 `gemini-2.5-flash`로 교체하고, 혹시 이 모델도 나중에 바뀌는 경우를 대비해 `gemini-2.5-flash-lite` → `gemini-flash-latest` 순으로 자동 재시도하는 폴백을 추가했습니다.
+- **적용 방법**: 아래 "배포 반영 방법" 참고 — `netlify/functions/analysis.js` 파일만 교체 후 다시 push하면 Netlify가 자동으로 재배포합니다.
+- 참고: 지수 조회(`indices.js`, Yahoo Finance)는 별도 문제가 없는 것으로 확인했습니다. 이 부분은 원래 CORS 우회 목적이었고 모델 종료와는 무관합니다.
+
+### 배포 반영 방법
+
+```bash
+cd hajoni72   # 기존 저장소 클론 폴더
+# 아래 파일을 이번에 받은 새 버전으로 덮어쓰기
+cp -f /경로/stock-briefing/netlify/functions/analysis.js netlify/functions/analysis.js
+git add netlify/functions/analysis.js
+git commit -m "fix: Gemini 모델명을 종료된 2.0-flash에서 2.5-flash로 교체"
+git push
+```
+
+push 하면 Netlify가 GitHub 연동을 통해 자동으로 재배포합니다 (1~2분 소요). Netlify 대시보드의 **Deploys** 탭에서 진행 상황을 볼 수 있습니다.
+
+### 재배포 후 확인하는 법
+
+1. 사이트 접속 후 브라우저 개발자도구(F12) → **Network** 탭 → `analysis` 요청의 응답이 `200`이고 `analysis` 필드에 실제 문장이 들어있는지 확인
+2. 화면의 "AI 분석 기준: ..." 문구가 "로딩 중..."이 아니라 실제 오늘 날짜/시각으로 바뀌는지 확인
+3. 여전히 실패한다면 Netlify 대시보드 **Logs & Metrics → Functions → analysis**에서 에러 로그 확인 (대부분 `GEMINI_API_KEY` 미설정 또는 오타, 혹은 무료 티어 분당 호출 제한 초과)
+
+---
+
 완전 무료(신용카드/유료 구독 불필요)로 아래 세 가지를 실제로 구현했습니다.
 
 - **지수(코스피·코스닥·다우·S&P500·나스닥·SOX)**: 접속/새로고침 시점에 Yahoo Finance에서 실제로 실시간 조회

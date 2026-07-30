@@ -6,7 +6,9 @@
 // 3) 결과를 JSON으로 반환한다. 비용은 발생하지 않지만, Gemini 무료 티어는
 //    분당 호출 횟수 제한이 있으므로 너무 자주 호출하지 않도록 프론트엔드에서 조절한다.
 
-const GEMINI_MODEL = 'gemini-3.5-flash';
+// 2026년 3월 gemini-2.0-flash가 공식 종료되어, 현재 안정 모델을 우선 사용하고
+// 만약을 대비해 순서대로 재시도하는 폴백 목록을 둔다.
+const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-flash-latest'];
 
 async function fetchRSS(url, limit) {
   const res = await fetch(url, {
@@ -118,38 +120,56 @@ exports.handler = async function () {
 
     const prompt = buildPrompt(krNews, usNews, techNews, nowKST);
 
-    const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: {
-            temperature: 0.4,
-            responseMimeType: 'application/json',
-          },
-        }),
-      }
-    );
+    let text = null;
+    let lastErr = null;
+    for (const model of GEMINI_MODELS) {
+      try {
+        const geminiRes = await fetch(
+          `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: prompt }] }],
+              generationConfig: {
+                temperature: 0.4,
+                maxOutputTokens: 3000,
+                responseMimeType: 'application/json',
+              },
+            }),
+          }
+        );
 
-    if (!geminiRes.ok) {
-      const errText = await geminiRes.text();
-      throw new Error('Gemini API 오류 ' + geminiRes.status + ': ' + errText.slice(0, 300));
+        if (!geminiRes.ok) {
+          const errText = await geminiRes.text();
+          lastErr = new Error('Gemini(' + model + ') 오류 ' + geminiRes.status + ': ' + errText.slice(0, 200));
+          continue; // 다음 모델로 재시도 (예: 모델 종료·쿼터 초과 시)
+        }
+
+        const geminiJson = await geminiRes.json();
+        const candidateText =
+          geminiJson &&
+          geminiJson.candidates &&
+          geminiJson.candidates[0] &&
+          geminiJson.candidates[0].content &&
+          geminiJson.candidates[0].content.parts &&
+          geminiJson.candidates[0].content.parts[0] &&
+          geminiJson.candidates[0].content.parts[0].text;
+
+        if (!candidateText) {
+          lastErr = new Error('Gemini(' + model + ') 응답에 텍스트가 없습니다.');
+          continue;
+        }
+
+        text = candidateText;
+        break; // 성공하면 나머지 모델은 시도하지 않음
+      } catch (e) {
+        lastErr = e;
+      }
     }
 
-    const geminiJson = await geminiRes.json();
-    const text =
-      geminiJson &&
-      geminiJson.candidates &&
-      geminiJson.candidates[0] &&
-      geminiJson.candidates[0].content &&
-      geminiJson.candidates[0].content.parts &&
-      geminiJson.candidates[0].content.parts[0] &&
-      geminiJson.candidates[0].content.parts[0].text;
-
     if (!text) {
-      throw new Error('Gemini 응답에 텍스트가 없습니다.');
+      throw lastErr || new Error('사용 가능한 Gemini 모델을 찾지 못했습니다.');
     }
 
     let parsed;
